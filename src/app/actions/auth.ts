@@ -16,15 +16,27 @@ function authErrorMessage(raw: string): string {
   return raw;
 }
 
+const getURL = () => {
+  let url =
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    process.env.NEXT_PUBLIC_VERCEL_URL ??
+    process.env.VERCEL_URL ??
+    "http://localhost:3000";
+  
+  url = url.trim(); // remove accidental trailing spaces
+  url = url.startsWith("http") ? url : `https://${url}`;
+  url = url.endsWith("/") ? url : `${url}/`;
+  return url;
+};
+
 export async function signInWithOAuth(provider: "google" | "github") {
   const supabase = await createClient();
-  const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const siteUrl = getURL();
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider,
     options: {
-      redirectTo: `${siteUrl}/auth/callback`,
+      redirectTo: `${siteUrl}auth/callback`,
     },
   });
 
