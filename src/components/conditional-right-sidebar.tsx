@@ -9,12 +9,18 @@ import { RightSidebar } from "./right-sidebar";
  */
 const HIDDEN_ON = ["/profile"];
 
-export function ConditionalRightSidebar() {
+type Props = {
+    habits: { name: string; completed: boolean }[];
+    currentStreak: number;
+    longestStreak: number;
+};
+
+export function ConditionalRightSidebar({ habits, currentStreak, longestStreak }: Props) {
     const pathname = usePathname();
 
     // Hide on profile pages (they have their own 3-column layout)
     const shouldHide = HIDDEN_ON.some((route) => pathname.startsWith(route));
     if (shouldHide) return null;
 
-    return <RightSidebar />;
+    return <RightSidebar habits={habits} currentStreak={currentStreak} longestStreak={longestStreak} />;
 }

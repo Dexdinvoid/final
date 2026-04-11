@@ -8,6 +8,7 @@ import {
   generateChallenge,
   acceptChallenge,
   completeChallenge,
+  deleteChallenge,
 } from "@/app/actions/challenges";
 
 type Challenge = {
@@ -76,6 +77,35 @@ export function ChallengesContent({
     const result = await completeChallenge(challengeId);
     if (result?.error) setError(result.error);
     else router.refresh();
+  }
+
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  async function handleDelete(challengeId: string) {
+    // First click: show confirmation
+    if (confirmDeleteId !== challengeId) {
+      setConfirmDeleteId(challengeId);
+      // Auto-cancel after 5 seconds
+      setTimeout(() => setConfirmDeleteId((prev) => prev === challengeId ? null : prev), 5000);
+      return;
+    }
+    // Second click: actually delete
+    setConfirmDeleteId(null);
+    setDeletingId(challengeId);
+    setError(null);
+    try {
+      const result = await deleteChallenge(challengeId);
+      if (result?.error) {
+        setError(result.error);
+      } else {
+        router.refresh();
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete");
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   function LeaderboardList({ users }: { users: LeaderUser[] }) {
@@ -181,7 +211,7 @@ export function ChallengesContent({
                         <span className="text-[10px] text-slate-500 font-medium">{c.points} pts</span>
                       </div>
                     </div>
-                    <div className="shrink-0">
+                    <div className="shrink-0 flex items-center gap-2">
                       {!my ? (
                         <button
                           type="button"
@@ -203,6 +233,23 @@ export function ChallengesContent({
                       ) : (
                         <span className="text-[10px] text-primary font-black uppercase tracking-tighter">Completed</span>
                       )}
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleDelete(c.id); }}
+                        disabled={deletingId === c.id}
+                        className={`flex items-center gap-1 px-3 py-1.5 rounded-full font-bold text-[10px] transition-all disabled:opacity-50 ${
+                          confirmDeleteId === c.id
+                            ? "bg-red-500/30 border border-red-500/60 text-red-300 animate-pulse"
+                            : deletingId === c.id
+                            ? "bg-red-500/20 border border-red-500/30 text-red-400"
+                            : "bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 hover:border-red-500/40"
+                        }`}
+                      >
+                        <span className="material-icons-round text-xs">
+                          {deletingId === c.id ? "hourglass_empty" : "delete"}
+                        </span>
+                        {deletingId === c.id ? "Deleting..." : confirmDeleteId === c.id ? "Sure?" : "Delete"}
+                      </button>
                     </div>
                   </div>
                 </li>
@@ -245,6 +292,24 @@ export function ChallengesContent({
                       Complete
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(uc.challenge.id)}
+                    disabled={deletingId === uc.challenge.id}
+                    className={`flex items-center gap-1 px-3 py-1.5 rounded-full font-bold text-[10px] transition-all disabled:opacity-50 ${
+                      confirmDeleteId === uc.challenge.id
+                        ? "bg-red-500/30 border border-red-500/60 text-red-300 animate-pulse"
+                        : deletingId === uc.challenge.id
+                        ? "bg-red-500/20 border border-red-500/30 text-red-400"
+                        : "bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 hover:border-red-500/40"
+                    }`}
+                    title="Delete challenge"
+                  >
+                    <span className="material-icons-round text-xs">
+                      {deletingId === uc.challenge.id ? "hourglass_empty" : "delete"}
+                    </span>
+                    {deletingId === uc.challenge.id ? "..." : confirmDeleteId === uc.challenge.id ? "Sure?" : "Delete"}
+                  </button>
                 </div>
               </li>
             ))}

@@ -15,7 +15,7 @@ const navItems = [
     { href: "/messages", label: "Messages", icon: "chat_bubble", iconType: "round" },
 ];
 
-export function Sidebar({ user }: { user: User | null }) {
+export function Sidebar({ user, unreadNotifications = 0 }: { user: User | null, unreadNotifications?: number }) {
     const pathname = usePathname();
 
     return (
@@ -36,22 +36,34 @@ export function Sidebar({ user }: { user: User | null }) {
             <nav className="flex-1 flex flex-col gap-2">
                 {navItems.map((item) => {
                     const isActive = pathname === item.href || pathname?.startsWith(item.href + "/");
+                    const hasNotification = item.href === "/notifications" && unreadNotifications > 0;
+                    
                     return (
                         <Link
                             key={item.href}
                             href={item.href}
-                            className={`group flex items-center gap-4 p-3.5 rounded-2xl transition-all duration-200 ${isActive
+                            className={`group flex items-center gap-4 p-3.5 rounded-2xl transition-all duration-200 relative ${isActive
                                     ? "bg-primary/10 border border-primary/20 text-white shadow-[0_0_15px_rgba(0,242,255,0.1)]"
                                     : "text-slate-400 hover:text-primary hover:bg-primary/5 border border-transparent"
                                 }`}
                         >
-                            <span
-                                className={`${item.iconType === "symbols" ? "material-symbols-outlined" : "material-icons-round"
-                                    } ${isActive ? "text-primary" : ""} group-hover:scale-110 transition-transform`}
-                            >
-                                {item.icon}
-                            </span>
+                            <div className="relative">
+                                <span
+                                    className={`${item.iconType === "symbols" ? "material-symbols-outlined" : "material-icons-round"
+                                        } ${isActive ? "text-primary" : ""} group-hover:scale-110 transition-transform`}
+                                >
+                                    {item.icon}
+                                </span>
+                                {hasNotification && (
+                                    <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#090b14] animate-pulse"></span>
+                                )}
+                            </div>
                             <span className="font-medium hidden lg:block">{item.label}</span>
+                            {hasNotification && (
+                                <span className="hidden lg:flex items-center justify-center ml-auto bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                    {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                                </span>
+                            )}
                         </Link>
                     );
                 })}

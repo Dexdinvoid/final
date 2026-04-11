@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { getLeagueFromPoints } from "@/lib/leagues";
+import { syncUser } from "@/lib/auth-helpers";
 
 const CHALLENGE_BONUS_POINTS = 25;
 
@@ -117,6 +118,11 @@ export async function acceptChallenge(challengeId: string) {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
 
+  // Ensure user exists in DB
+  let dbUser = await prisma.user.findUnique({ where: { id: user.id } });
+  if (!dbUser) dbUser = await syncUser(user);
+  if (!dbUser) return { error: "User sync failed" };
+
   const challenge = await prisma.challenge.findUnique({
     where: { id: challengeId },
   });
@@ -139,6 +145,11 @@ export async function completeChallenge(challengeId: string) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
+
+  // Ensure user exists in DB
+  let dbUser = await prisma.user.findUnique({ where: { id: user.id } });
+  if (!dbUser) dbUser = await syncUser(user);
+  if (!dbUser) return { error: "User sync failed" };
 
   const uc = await prisma.userChallenge.findUnique({
     where: { userId_challengeId: { userId: user.id, challengeId } },
@@ -167,5 +178,31 @@ export async function completeChallenge(challengeId: string) {
   });
   revalidatePath("/challenges");
   revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+export async function deleteChallenge(challengeId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const challenge = await prisma.challenge.findUnique({
+    where: { id: challengeId },
+  });
+  if (!challenge) return { error: "Challenge not found" };
+
+  // Delete associated user-challenge records first, then the challenge
+  await prisma.$transaction(async (tx) => {
+    await tx.userChallenge.deleteMany({
+      where: { challengeId },
+    });
+    await tx.challenge.delete({
+      where: { id: challengeId },
+    });
+  });
+
+  revalidatePath("/challenges");
   return { ok: true };
 }

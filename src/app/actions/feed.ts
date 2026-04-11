@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { syncUser } from "@/lib/auth-helpers";
 
 const likeSchema = z.object({ postId: z.string().cuid() });
 const commentSchema = z.object({
@@ -17,6 +18,11 @@ export async function toggleLike(postId: string) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
+
+  // Ensure user exists in DB
+  let dbUser = await prisma.user.findUnique({ where: { id: user.id } });
+  if (!dbUser) dbUser = await syncUser(user);
+  if (!dbUser) return { error: "User sync failed" };
 
   const parsed = likeSchema.safeParse({ postId });
   if (!parsed.success) return { error: "Invalid post" };
@@ -60,6 +66,11 @@ export async function addComment(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
 
+  // Ensure user exists in DB
+  let dbUser = await prisma.user.findUnique({ where: { id: user.id } });
+  if (!dbUser) dbUser = await syncUser(user);
+  if (!dbUser) return { error: "User sync failed" };
+
   const parsed = commentSchema.safeParse({
     postId: formData.get("postId"),
     body: formData.get("body"),
@@ -97,5 +108,38 @@ export async function addComment(formData: FormData) {
   }
 
   revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+export async function deletePost(postId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  // Ensure user exists in DB
+  let dbUser = await prisma.user.findUnique({ where: { id: user.id } });
+  if (!dbUser) dbUser = await syncUser(user);
+  if (!dbUser) return { error: "User sync failed" };
+
+  const parsed = likeSchema.safeParse({ postId });
+  if (!parsed.success) return { error: "Invalid post ID" };
+
+  // Find post to ensure user is author
+  const post = await prisma.post.findUnique({
+    where: { id: postId },
+    select: { userId: true },
+  });
+
+  if (!post) return { error: "Post not found" };
+  if (post.userId !== user.id) return { error: "Not authorized to delete this post" };
+
+  await prisma.post.delete({
+    where: { id: postId },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/profile/" + dbUser.username);
   return { ok: true };
 }

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { syncUser } from "@/lib/auth-helpers";
 
 const sendSchema = z.object({
   otherUsername: z.string().min(1).max(50),
@@ -16,6 +17,11 @@ export async function sendMessage(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
+
+  // Ensure user exists in DB
+  let dbUser = await prisma.user.findUnique({ where: { id: user.id } });
+  if (!dbUser) dbUser = await syncUser(user);
+  if (!dbUser) return { error: "User sync failed" };
 
   const otherUsername = (formData.get("otherUsername") as string)?.trim().toLowerCase();
   const body = (formData.get("body") as string)?.trim();

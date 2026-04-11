@@ -8,6 +8,7 @@ import { toggleLike, addComment } from "@/app/actions/feed";
 
 export type Post = {
   id: string;
+  userId: string;
   imageUrl: string;
   caption: string | null;
   createdAt: Date;
@@ -38,6 +39,8 @@ function timeAgo(date: Date): string {
   return `${diffDays}d ago`;
 }
 
+import { deletePost } from "@/app/actions/feed";
+
 export function FeedPostCard({
   post,
   currentUserId,
@@ -48,6 +51,8 @@ export function FeedPostCard({
   const router = useRouter();
   const liked = post.likes.some((l) => l.userId === currentUserId);
   const [showComments, setShowComments] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   async function handleLike() {
     await toggleLike(post.id);
@@ -61,6 +66,19 @@ export function FeedPostCard({
     formData.set("postId", post.id);
     await addComment(formData);
     form.reset();
+    router.refresh();
+  }
+
+  async function handleDeletePost() {
+    if (confirmDeleteId !== post.id) {
+      setConfirmDeleteId(post.id);
+      setTimeout(() => setConfirmDeleteId(null), 5000);
+      return;
+    }
+    setConfirmDeleteId(null);
+    setIsDeleting(true);
+    await deletePost(post.id);
+    setIsDeleting(false);
     router.refresh();
   }
 
@@ -106,9 +124,28 @@ export function FeedPostCard({
                 </div>
               </div>
             </div>
-            <button className="w-8 h-8 rounded-full hover:bg-white/5 flex items-center justify-center text-slate-500 hover:text-white transition-colors">
-              <span className="material-icons-round">more_horiz</span>
-            </button>
+            
+            <div className="flex gap-2">
+              {post.userId === currentUserId && (
+                <button 
+                  onClick={handleDeletePost}
+                  disabled={isDeleting}
+                  className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors disabled:opacity-50 ${
+                    confirmDeleteId === post.id
+                      ? "bg-red-500/30 text-red-300 animate-pulse"
+                      : "hover:bg-red-500/10 text-slate-500 hover:text-red-400"
+                  }`}
+                  title={confirmDeleteId === post.id ? "Click again to confirm" : "Delete post"}
+                >
+                  <span className="material-icons-round text-[18px]">
+                    {isDeleting ? "hourglass_empty" : "delete"}
+                  </span>
+                </button>
+              )}
+              <button className="w-8 h-8 rounded-full hover:bg-white/5 flex items-center justify-center text-slate-500 hover:text-white transition-colors">
+                <span className="material-icons-round">more_horiz</span>
+              </button>
+            </div>
           </div>
 
           {/* Post Image */}

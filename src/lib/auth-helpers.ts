@@ -14,9 +14,11 @@ export async function syncUser(user: SupabaseUser) {
 
     if (existing) {
         // Update the existing record to keep it in sync
+        // If the auth ID changed (e.g., re-signup on new project), update it
         return await prisma.user.update({
             where: { id: existing.id },
             data: {
+                id: user.id, // Sync the ID to match current auth user
                 email: user.email!,
                 displayName: user.user_metadata?.full_name || existing.displayName,
                 avatarUrl: user.user_metadata?.avatar_url || existing.avatarUrl,

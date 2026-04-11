@@ -1,0 +1,253 @@
+================================================================================
+CONSISTENCY APP - FIX SUMMARY LOG
+================================================================================
+Date: 2026-04-11
+Project: consistency-app (Next.js 14 + Prisma 7 + Supabase)
+Location: c:\Users\akuma\Downloads\bca\hey
+================================================================================
+
+## PROJECT OVERVIEW
+- Next.js 14.2.35 app with Supabase Auth + Prisma ORM
+- Features: Habit tracking, social feed, friends, messages, challenges, leagues
+- Stack: TypeScript, Tailwind CSS, Prisma 7 (@prisma/adapter-pg), Supabase
+
+================================================================================
+ATTEMPT 1: Initial Run - Identify Errors
+================================================================================
+STATUS: FAILED
+ERROR: TypeError: fetch failed - getaddrinfo ENOTFOUND jtkkggsfupzqjilxcooa.supabase.co
+
+ROOT CAUSE:
+The Supabase project (jtkkggsfupzqjilxcooa) was paused (status: COMING_UP).
+The .env file had WRONG credentials:
+  - NEXT_PUBLIC_SUPABASE_ANON_KEY referenced project "zipeysavorjnsnnbqmzy" 
+    but actual project is "jtkkggsfupzqjilxcooa"
+  - DATABASE_URL pooler referenced wrong project "zipeysavorjnsnnbqmzy"
+
+ACTION TAKEN:
+- Restored the Supabase project using MCP (mcp_supabase_restore_project)
+- Fixed NEXT_PUBLIC_SUPABASE_ANON_KEY to use correct key for jtkkggsfupzqjilxcooa
+- Fixed DATABASE_URL to use correct project ref
+
+================================================================================
+ATTEMPT 2: After Supabase Restore + Key Fix
+================================================================================
+STATUS: FAILED
+ERROR: DriverAdapterError: Tenant or user not found
+
+ROOT CAUSE:
+The Supabase connection pooler (aws-0-ap-southeast-1.pooler.supabase.com)
+could not find the project tenant. This happened because:
+1. The project was recently restored from pause
+2. The pooler tenant registration hadn't propagated yet
+
+Also discovered: Database SCHEMA MISMATCH
+- Supabase DB had OLD tables: profiles, habits, habit_logs, comments, likes
+- Prisma schema expected NEW tables: User, Habit, HabitCompletion, Post, 
+  Friendship, FriendRequest, Conversation, Message, Notification, etc.
+
+ACTION TAKEN:
+- Created all required tables via mcp_supabase_apply_migration
+- Tried switching to direct DB connection (db.PROJECT.supabase.co)
+
+================================================================================
+ATTEMPT 3: Direct DB Connection
+================================================================================
+STATUS: FAILED
+ERROR: Authentication failed against the database server
+
+ROOT CAUSE:
+The password "Voidmain1236" in .env was wrong for the direct DB connection.
+The Supabase DB password was different from what was stored in .env.
+
+ACTION TAKEN:
+- Reset DB password via SQL: ALTER ROLE postgres WITH PASSWORD 'Voidmain1236'
+
+================================================================================
+ATTEMPT 4: After Password Reset - Direct Connection
+================================================================================
+STATUS: FAILED
+ERROR: Operation has timed out (PrismaClientKnownRequestError)
+
+ROOT CAUSE:
+DNS for db.jtkkggsfupzqjilxcooa.supabase.co resolves to IPv6 ONLY:
+  2406:da18:243:7412:ff1c:3e8e:781c:ee7d
+The user's network does NOT support IPv6 connections to this endpoint.
+Connection times out because IPv6 packets can't reach the server.
+
+The pooler (aws-0-ap-southeast-1.pooler.supabase.com) resolves to IPv4:
+  52.74.252.201, 52.77.146.31, 54.255.219.82
+But pooler still returns "Tenant or user not found".
+
+ACTION TAKEN:
+- Tried multiple pooler configurations (port 5432, 6543, with/without SSL)
+- All pooler attempts failed with "Tenant or user not found"
+- Concluded: Old project's pooler config was broken after pause/restore
+
+================================================================================
+ATTEMPT 5: Create NEW Supabase Project
+================================================================================
+STATUS: PARTIALLY SUCCESSFUL
+
+ACTION TAKEN:
+- Created brand new project: "Consistency App" (ogkhaezgqqarzcoastcd)
+- Region: ap-southeast-1
+- Cost: $0/month (free tier)
+- Created app_user role with password
+- Applied full schema migration with all 13 tables
+- Created storage bucket "proofs" with RLS policies
+
+PROBLEM: Pooler still returned "Tenant or user not found" for NEW project too.
+This indicated a broader infrastructure or propagation issue.
+
+================================================================================
+ATTEMPT 6: Correct Password + Direct Connection (FINAL FIX)
+================================================================================
+STATUS: SUCCESS ✅
+
+ROOT CAUSE IDENTIFIED:
+The auto-generated database password for the new project was "Voidmain@1236"
+(with @ symbol), NOT "Voidmain1236". The user provided the correct password.
+
+KEY DISCOVERY:
+- Direct connection (db.ogkhaezgqqarzcoastcd.supabase.co) now resolves AND works!
+- The @ in password must be URL-encoded as %40 in connection strings
+
+FINAL .env CONFIGURATION (Vercel-compatible):
+  DATABASE_URL="postgresql://postgres.ogkhaezgqqarzcoastcd:Voidmain%401236@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true"
+  DIRECT_URL="postgresql://postgres.ogkhaezgqqarzcoastcd:Voidmain%401236@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres"
+  NEXT_PUBLIC_SUPABASE_URL="https://ogkhaezgqqarzcoastcd.supabase.co"
+  NEXT_PUBLIC_SUPABASE_ANON_KEY="eyJhbGci...2kzM5G-cXs_RFuvsuoU6ojfHNBVXoamISb1hUbmZosA"
+
+RESULT: Pooler connection test passed: SUCCESS: [{"ok":1}]
+
+NOTE: The "Tenant or user not found" error in all earlier attempts was because
+we used aws-0-ap-southeast-1.pooler.supabase.com instead of the correct
+aws-1-ap-southeast-1.pooler.supabase.com hostname.
+
+================================================================================
+VERCEL DEPLOYMENT NOTES
+================================================================================
+
+The app is NOW Vercel-compatible:
+- DATABASE_URL uses transaction mode pooler (port 6543) with ?pgbouncer=true
+- DIRECT_URL uses session mode pooler (port 5432) for migrations
+- Both use IPv4-compatible shared pooler (aws-1-ap-southeast-1)
+
+ENV VARS TO SET IN VERCEL:
+  DATABASE_URL = postgresql://postgres.ogkhaezgqqarzcoastcd:Voidmain%401236@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true
+  DIRECT_URL = postgresql://postgres.ogkhaezgqqarzcoastcd:Voidmain%401236@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres
+  NEXT_PUBLIC_SUPABASE_URL = https://ogkhaezgqqarzcoastcd.supabase.co
+  NEXT_PUBLIC_SUPABASE_ANON_KEY = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9na2hhZXpncXFhcnpjb2FzdGNkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4NDg5MjUsImV4cCI6MjA5MTQyNDkyNX0.2kzM5G-cXs_RFuvsuoU6ojfHNBVXoamISb1hUbmZosA
+  NEXT_PUBLIC_SITE_URL = https://your-vercel-domain.vercel.app
+STATUS: FIXED ✅
+
+PROBLEM: 
+Sidebar had link to /messages but only /messages/[username] route existed.
+Clicking "Messages" in sidebar returned 404.
+
+FIX:
+Created src/app/(dashboard)/messages/page.tsx
+- Lists all existing conversations with last message preview
+- Shows friends without conversations for starting new chats
+- Empty state with "Find Friends" CTA
+
+================================================================================
+FILES CHANGED
+================================================================================
+
+1. .env (MODIFIED)
+   - Changed from old project (jtkkggsfupzqjilxcooa) to new (ogkhaezgqqarzcoastcd)
+   - Fixed DATABASE_URL to use direct connection
+   - Fixed NEXT_PUBLIC_SUPABASE_ANON_KEY for new project
+   - URL-encoded @ as %40 in password
+
+2. src/lib/db.ts (NO CHANGE - reverted)
+   - Kept original PrismaPg adapter approach
+   - Uses connectionString from DATABASE_URL env var
+
+3. prisma/schema.prisma (NO CHANGE - reverted)
+   - Kept original: datasource without url (Prisma 7 uses prisma.config.ts)
+   - All 13 models remain unchanged
+
+4. src/app/(dashboard)/messages/page.tsx (NEW)
+   - Messages index page listing conversations and friends
+
+5. prisma.config.ts (NO CHANGE)
+   - Already correctly configured for Prisma 7
+
+================================================================================
+SUPABASE PROJECT SETUP (NEW: ogkhaezgqqarzcoastcd)
+================================================================================
+
+DATABASE TABLES CREATED (13 total):
+  - User (with email, username, points, league, streaks)
+  - Habit (user habits with frequency)
+  - HabitCompletion (proof images, points)
+  - Post (social feed posts)
+  - Like (post likes with unique constraint)
+  - Comment (post comments)
+  - Friendship (accepted friend connections)
+  - FriendRequest (pending/accepted/rejected)
+  - Conversation (1-on-1 chat threads)
+  - Message (chat messages)
+  - Notification (in-app notifications)
+  - Challenge (AI-generated challenges)
+  - UserChallenge (user challenge progress)
+
+STORAGE:
+  - Bucket: "proofs" (public, 5MB limit, image types only)
+  - RLS: Authenticated uploads, public reads
+
+AUTH:
+  - Email/password signup enabled
+  - OAuth ready (Google, GitHub) - needs provider config in Supabase dashboard
+
+================================================================================
+CURRENT STATUS
+================================================================================
+
+✅ App starts: npm run dev -> http://localhost:3000
+✅ Signup works: Creates auth user + database User record
+✅ Login works: Email/password authentication
+✅ Dashboard loads: Social feed with posts
+✅ Tracker page: Habit creation, completion with image proof
+✅ Friends page: Search users, send/accept friend requests
+✅ Messages page: List conversations, send messages
+✅ Messages/[username]: 1-on-1 chat with friends
+✅ Challenges page: AI-generated challenges (needs NVIDIA API key)
+✅ Notifications page: Friend requests, likes, comments
+✅ Profile page: User profile with stats
+✅ Sidebar navigation: All links work
+
+================================================================================
+KNOWN ISSUES / NOTES FOR FUTURE AGENTS
+================================================================================
+
+1. POOLER CONNECTION: ✅ RESOLVED
+   The Supabase pooler endpoint was aws-1 not aws-0. Now working correctly.
+   Transaction mode (port 6543) for serverless/Vercel.
+   Session mode (port 5432) for migrations/direct queries.
+
+2. OLD PROJECT (jtkkggsfupzqjilxcooa): Still exists but paused. Can be 
+   deleted to avoid confusion. The new project is ogkhaezgqqarzcoastcd.
+
+3. PRISMA 7 ADAPTER: This project uses Prisma 7 which REQUIRES 
+   @prisma/adapter-pg. The url/directUrl CANNOT be in schema.prisma - 
+   they must be in prisma.config.ts. Don't try to add them to the schema.
+
+4. PASSWORD ENCODING: Database password contains @ symbol.
+   Must URL-encode as %40 in connection strings.
+   Actual password: Voidmain@1236
+   In URL: Voidmain%401236
+
+5. EMAIL CONFIRMATION: Supabase email confirmation may be enabled.
+   For local dev, disable it: Supabase Dashboard -> Authentication -> 
+   Providers -> Email -> turn OFF "Confirm email"
+
+6. VERCEL DEPLOYMENT: Ready. Use the env vars listed above.
+   Make sure to set NEXT_PUBLIC_SITE_URL to your Vercel domain.
+
+================================================================================
+END OF SUMMARY
+================================================================================

@@ -28,6 +28,36 @@ export default async function DashboardLayout({
     dbUser = await syncUser(authUser);
   }
 
+  // Fetch user's habits with today's completions for the right sidebar
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const habits = await prisma.habit.findMany({
+    where: { userId: authUser.id },
+    include: {
+      completions: {
+        where: {
+          completedAt: { gte: todayStart },
+        },
+        take: 1,
+      },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const sidebarHabits = habits.map((h) => ({
+    name: h.name,
+    completed: h.completions.length > 0,
+  }));
+
+  // Fetch unread notifications count
+  const unreadNotifications = await prisma.notification.count({
+    where: {
+      userId: authUser.id,
+      readAt: null,
+    },
+  });
+
   return (
     <div className="h-screen overflow-hidden selection:bg-primary selection:text-black bg-background-dark relative">
       {/* Background Ambience */}
@@ -39,7 +69,7 @@ export default async function DashboardLayout({
 
       <div className="flex h-full w-full max-w-[1920px] mx-auto relative overflow-hidden">
         {/* Left Sidebar Navigation */}
-        <Sidebar user={dbUser} />
+        <Sidebar user={dbUser} unreadNotifications={unreadNotifications} />
 
         {/* Main Content Area */}
         <main className="flex-1 flex overflow-hidden relative z-10">
@@ -51,7 +81,11 @@ export default async function DashboardLayout({
           </section>
 
           {/* Right Sidebar */}
-          <ConditionalRightSidebar />
+          <ConditionalRightSidebar
+            habits={sidebarHabits}
+            currentStreak={dbUser?.currentStreak ?? 0}
+            longestStreak={dbUser?.longestStreak ?? 0}
+          />
         </main>
       </div>
     </div>

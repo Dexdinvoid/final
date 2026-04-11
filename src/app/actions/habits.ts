@@ -9,6 +9,7 @@ import {
 import { uploadProofImage } from "@/lib/storage";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { syncUser } from "@/lib/auth-helpers";
 
 const createHabitSchema = z.object({
   name: z.string().min(1).max(100),
@@ -27,26 +28,37 @@ export async function createHabit(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
 
+  // Ensure user exists in DB
+  let dbUser = await prisma.user.findUnique({ where: { id: user.id } });
+  if (!dbUser) dbUser = await syncUser(user);
+  if (!dbUser) return { error: "User sync failed" };
+
   const parsed = createHabitSchema.safeParse({
     name: formData.get("name"),
     description: formData.get("description") || undefined,
     frequency: formData.get("frequency") || "daily",
   });
   if (!parsed.success) {
+    console.error("Habit validation failed:", parsed.error.flatten());
     return { error: parsed.error.flatten().fieldErrors.name?.[0] ?? "Invalid input" };
   }
 
-  await prisma.habit.create({
-    data: {
-      userId: user.id,
-      name: parsed.data.name,
-      description: parsed.data.description,
-      frequency: parsed.data.frequency,
-    },
-  });
-  revalidatePath("/tracker");
-  revalidatePath("/dashboard");
-  return { ok: true };
+  try {
+    await prisma.habit.create({
+      data: {
+        userId: user.id,
+        name: parsed.data.name,
+        description: parsed.data.description,
+        frequency: parsed.data.frequency,
+      },
+    });
+    revalidatePath("/tracker");
+    revalidatePath("/dashboard");
+    return { ok: true };
+  } catch (error) {
+    console.error("Habit DB Error:", error);
+    return { error: "Database error occurred while adding habit" };
+  }
 }
 
 export async function completeHabit(formData: FormData) {
@@ -55,6 +67,11 @@ export async function completeHabit(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
+
+  // Ensure user exists in DB
+  let dbUser = await prisma.user.findUnique({ where: { id: user.id } });
+  if (!dbUser) dbUser = await syncUser(user);
+  if (!dbUser) return { error: "User sync failed" };
 
   const habitId = formData.get("habitId") as string;
   const file = formData.get("image") as File | null;
